@@ -1,0 +1,260 @@
+{
+  "name": "Formulario a PDF",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Formulario de Registro",
+        "formDescription": "Complete todos los campos requeridos",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Nombre",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "Ingrese su nombre completo"
+            },
+            {
+              "fieldLabel": "Cedula",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "Ingrese su número de cédula"
+            },
+            {
+              "fieldLabel": "Titulo",
+              "fieldType": "file",
+              "requiredField": true,
+              "acceptFileTypes": ".jpg,.jpeg,.png,.pdf",
+              "multipleFiles": false
+            },
+            {
+              "fieldLabel": "Creditos",
+              "fieldType": "file",
+              "requiredField": true,
+              "acceptFileTypes": ".jpg,.jpeg,.png,.pdf",
+              "multipleFiles": false
+            },
+            {
+              "fieldLabel": "Copia de Cedula",
+              "fieldType": "file",
+              "requiredField": true,
+              "acceptFileTypes": ".jpg,.jpeg,.png,.pdf",
+              "multipleFiles": false
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {
+              "respondWith": "text",
+              "responseText": "¡Formulario enviado exitosamente! Su PDF está siendo generado."
+            }
+          }
+        }
+      },
+      "id": "node_form_trigger",
+      "name": "Formulario de Registro",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [240, 300],
+      "webhookId": "form-registro-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer datos del formulario\nconst formData = $input.first().json;\n\n// Construir objeto con los datos del formulario\nconst nombre = formData['Nombre'] || '';\nconst cedula = formData['Cedula'] || '';\n\n// Extraer archivos (vienen como binary data)\nconst binary = $input.first().binary || {};\n\n// Los campos file del formulario vienen como binarios\nconst tituloFile = binary['Titulo'] ? binary['Titulo'] : null;\nconst creditosFile = binary['Creditos'] ? binary['Creditos'] : null;\nconst copiaFile = binary['Copia de Cedula'] ? binary['Copia de Cedula'] : null;\n\n// Convertir imágenes a base64 para incrustar en HTML\nfunction getBase64Image(binaryData) {\n  if (!binaryData) return null;\n  const mimeType = binaryData.mimeType || 'image/jpeg';\n  const data = binaryData.data || '';\n  return `data:${mimeType};base64,${data}`;\n}\n\nconst tituloBase64 = getBase64Image(tituloFile);\nconst creditosBase64 = getBase64Image(creditosFile);\nconst copiaBase64 = getBase64Image(copiaFile);\n\n// Generar fecha actual\nconst fechaActual = new Date().toLocaleDateString('es-CO', {\n  year: 'numeric',\n  month: 'long',\n  day: 'numeric'\n});\n\n// Generar HTML para el PDF\nconst html = `\n<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    * { margin: 0; padding: 0; box-sizing: border-box; }\n    body {\n      font-family: Arial, sans-serif;\n      font-size: 12px;\n      color: #333;\n      padding: 30px;\n    }\n    .header {\n      text-align: center;\n      border-bottom: 3px solid #2c3e50;\n      padding-bottom: 20px;\n      margin-bottom: 30px;\n    }\n    .header h1 {\n      font-size: 24px;\n      color: #2c3e50;\n      margin-bottom: 5px;\n    }\n    .header p {\n      color: #7f8c8d;\n      font-size: 11px;\n    }\n    .section {\n      margin-bottom: 25px;\n      padding: 15px;\n      border: 1px solid #ddd;\n      border-radius: 5px;\n      background: #f9f9f9;\n    }\n    .section h2 {\n      font-size: 14px;\n      color: #2c3e50;\n      margin-bottom: 12px;\n      padding-bottom: 5px;\n      border-bottom: 1px solid #ddd;\n    }\n    .field-row {\n      display: flex;\n      margin-bottom: 8px;\n    }\n    .field-label {\n      font-weight: bold;\n      width: 150px;\n      color: #555;\n    }\n    .field-value {\n      color: #333;\n    }\n    .image-section {\n      margin-bottom: 25px;\n    }\n    .image-section h2 {\n      font-size: 14px;\n      color: #2c3e50;\n      margin-bottom: 10px;\n      padding: 8px 15px;\n      background: #2c3e50;\n      color: white;\n      border-radius: 4px;\n    }\n    .image-container {\n      text-align: center;\n      padding: 10px;\n      border: 1px solid #ddd;\n      border-radius: 5px;\n      background: white;\n    }\n    .image-container img {\n      max-width: 100%;\n      max-height: 400px;\n      object-fit: contain;\n      border: 1px solid #eee;\n    }\n    .no-image {\n      padding: 20px;\n      color: #999;\n      font-style: italic;\n      text-align: center;\n    }\n    .footer {\n      margin-top: 30px;\n      text-align: center;\n      font-size: 10px;\n      color: #999;\n      border-top: 1px solid #ddd;\n      padding-top: 15px;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <h1>Registro de Datos</h1>\n    <p>Generado el ${fechaActual}</p>\n  </div>\n\n  <div class=\"section\">\n    <h2>Información Personal</h2>\n    <div class=\"field-row\">\n      <span class=\"field-label\">Nombre:</span>\n      <span class=\"field-value\">${nombre}</span>\n    </div>\n    <div class=\"field-row\">\n      <span class=\"field-label\">Cédula:</span>\n      <span class=\"field-value\">${cedula}</span>\n    </div>\n  </div>\n\n  <div class=\"image-section\">\n    <h2>Título</h2>\n    <div class=\"image-container\">\n      ${tituloBase64\n        ? `<img src=\"${tituloBase64}\" alt=\"Título\" />`\n        : '<p class=\"no-image\">Imagen no disponible</p>'\n      }\n    </div>\n  </div>\n\n  <div class=\"image-section\">\n    <h2>Créditos</h2>\n    <div class=\"image-container\">\n      ${creditosBase64\n        ? `<img src=\"${creditosBase64}\" alt=\"Créditos\" />`\n        : '<p class=\"no-image\">Imagen no disponible</p>'\n      }\n    </div>\n  </div>\n\n  <div class=\"image-section\">\n    <h2>Copia de Cédula</h2>\n    <div class=\"image-container\">\n      ${copiaBase64\n        ? `<img src=\"${copiaBase64}\" alt=\"Copia de Cédula\" />`\n        : '<p class=\"no-image\">Imagen no disponible</p>'\n      }\n    </div>\n  </div>\n\n  <div class=\"footer\">\n    <p>Documento generado automáticamente — Cédula: ${cedula}</p>\n  </div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    nombre,\n    cedula,\n    fechaGeneracion: fechaActual,\n    htmlContent: html\n  },\n  binary\n}];"
+      },
+      "id": "node_prepare_html",
+      "name": "Preparar HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.html2pdf.app/v1/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "html",
+              "value": "={{ $json.htmlContent }}"
+            },
+            {
+              "name": "apiKey",
+              "value": "YOUR_HTML2PDF_API_KEY"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdfData"
+            }
+          }
+        }
+      },
+      "id": "node_generate_pdf_api",
+      "name": "Generar PDF (html2pdf.app)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 180],
+      "notes": "Opción A: Usar API externa html2pdf.app. Requiere API key."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Opción B: Generar PDF usando librería puppeteer (si está disponible en el entorno)\n// Este nodo es una alternativa si no se usa API externa\n\nconst htmlContent = $input.first().json.htmlContent;\nconst nombre = $input.first().json.nombre;\nconst cedula = $input.first().json.cedula;\n\n// Si n8n tiene acceso a puppeteer vía custom node o ejecuta scripts externos:\n// En entornos n8n self-hosted se puede usar el nodo 'Execute Command' con:\n// node generate_pdf.js\n\n// Para este nodo Code, simplemente pasamos el HTML listo\nreturn [{\n  json: {\n    nombre,\n    cedula,\n    htmlContent,\n    fileName: `registro_${cedula}_${Date.now()}.pdf`\n  },\n  binary: $input.first().binary\n}];"
+      },
+      "id": "node_alt_pdf",
+      "name": "Preparar nombre de archivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 420],
+      "notes": "Opción B: Preparar datos para nodo de conversión local"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "sourceData": "html",
+        "htmlTemplate": "={{ $json.htmlContent }}",
+        "options": {
+          "format": "A4",
+          "margin": {
+            "top": "20mm",
+            "bottom": "20mm",
+            "left": "15mm",
+            "right": "15mm"
+          },
+          "displayHeaderFooter": false,
+          "printBackground": true
+        },
+        "binaryPropertyName": "pdfFile"
+      },
+      "id": "node_html_to_pdf_builtin",
+      "name": "HTML a PDF (nodo nativo)",
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [960, 420],
+      "notes": "Requiere n8n >= 1.22 con soporte PDF nativo via Puppeteer integrado"
+    },
+    {
+      "parameters": {
+        "operation": "rename",
+        "binaryPropertyName": "pdfFile",
+        "newBinaryPropertyName": "pdfFile",
+        "options": {
+          "fileName": "=registro_{{ $json.cedula }}_{{ $now.format('yyyyMMdd_HHmmss') }}.pdf"
+        }
+      },
+      "id": "node_rename_file",
+      "name": "Renombrar PDF",
+      "type": "n8n-nodes-base.moveBinaryData",
+      "typeVersion": 1,
+      "position": [1200, 420]
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/pdf"
+              },
+              {
+                "name": "Content-Disposition",
+                "value": "=attachment; filename=\"registro_{{ $json.cedula }}.pdf\""
+              }
+            ]
+          }
+        },
+        "binaryPropertyName": "pdfFile"
+      },
+      "id": "node_respond_pdf",
+      "name": "Responder con PDF",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1440, 420]
+    }
+  ],
+  "connections": {
+    "Formulario de Registro": {
+      "main": [
+        [
+          {
+            "node": "Preparar HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar HTML": {
+      "main": [
+        [
+          {
+            "node": "Preparar nombre de archivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar nombre de archivo": {
+      "main": [
+        [
+          {
+            "node": "HTML a PDF (nodo nativo)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML a PDF (nodo nativo)": {
+      "main": [
+        [
+          {
+            "node": "Renombrar PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Renombrar PDF": {
+      "main": [
+        [
+          {
+            "node": "Responder con PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": ["formulario", "pdf", "registro"],
+  "triggerCount": 0,
+  "updatedAt": "2026-04-01T00:00:00.000Z",
+  "versionId": "1"
+}
