@@ -4,7 +4,6 @@
     body  { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #f8fafc; }
     button { padding: 8px 20px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; }
     button:hover { background: #1d4ed8; }
-    button:disabled { background: #93c5fd; cursor: not-allowed; }
 
     #output {
         margin-top: 16px;
@@ -16,24 +15,20 @@
         border-radius: 8px;
         white-space: pre-wrap;
         min-height: 40px;
-        display: flex;
-        flex-direction: column;
-        gap: 0;
     }
     #output:empty { display: none; }
 
     .out-line { display: block; color: #e2e8f0; }
     .out-warn { display: block; color: #fbbf24; }
     .out-err  { display: block; color: #f87171; font-weight: 600; }
-    .out-img  {
-        max-width: 100%;
-        border: 1px solid #334155;
-        border-radius: 8px;
-        margin: 8px 0;
-        display: block;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    }
 
+    #plots { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+    #plots img {
+        max-width: 100%;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
     textarea {
         resize: vertical;
         font-family: 'Courier New', Courier, monospace;
@@ -48,10 +43,19 @@
 
     <h2>WebR Output Demo</h2>
     <button id="btn">Run R</button><br>
-    <textarea style="width:800px;" id="input" cols="20" rows="10" spellcheck="false"></textarea>
+    <button id="btn2" onclick="getLines();">Run R2</button><br>
+    <textarea style="width:800px;" id="input" cols="20" rows="10" spellcheck="false">
+x=rnorm(100)
+print(x)
+plot(x)
 
-    <!-- Combined output: text and images interleaved in command order -->
+    </textarea>
+
+    <!-- Text output -->
     <div id="output"></div>
+
+    <!-- Plot output -->
+    <div id="plots"></div>
 
 <script type="module">
     import { WebR } from 'https://webr.r-wasm.org/latest/webr.mjs';
@@ -75,80 +79,63 @@
         const img = document.createElement('img');
         img.src = canvas.toDataURL('image/png');
         img.alt = 'R plot';
-        img.className = 'out-img';
         return img;
     }
 
-    function appendSpan(parent, cls, text) {
-        const span = document.createElement('span');
-        span.className = cls;
-        span.textContent = text;
-        parent.appendChild(span);
-    }
-
     // ── run on button click ───────────────────────────────────────────────
-    const btn = document.getElementById('btn');
-
-    btn.addEventListener('click', async () => {
+    async function ejecutar(cmd2) {
         const outputEl = document.getElementById('output');
-        outputEl.innerHTML = '';
-        appendSpan(outputEl, 'out-warn', 'Running...');
-        btn.disabled = true;
+        const plotsEl  = document.getElementById('plots');
 
-        const userCode = document.getElementById('input').value;
+        outputEl.innerHTML = '<span class="out-warn">Running...</span>';
+        plotsEl.innerHTML  = '';
 
         try {
-            // Close any open devices from previous runs, then open a fresh canvas device.
-            // dev.off() at the end flushes the last plot page as a canvas message.
-            const code = [
-                'try(graphics.off(), silent=TRUE)',
-                'webr::canvas(width=720, height=480)',
-                userCode,
-                'try(dev.off(), silent=TRUE)',
-            ].join('\n');
+            const shelter = await new webR.Shelter();
 
-            await webR.writeConsole(code + '\n');
+            const result = await shelter.captureR(cmd2, {
+                withAutoprint: true,
+                captureGraphics: { width: 720, height: 480 }
+            });
 
-            outputEl.innerHTML = '';
+            // ── 1. Text output ──────────────────────────────────────────
+            outputEl.innerHTML = result.output.map(line => {
+                const text = escapeHtml(line.data);
+                if (line.type === 'stdout')  return `<span class="out-line">${text}</span>`;
+                if (line.type === 'stderr')  return `<span class="out-err">${text}</span>`;
+                if (line.type === 'message') return `<span class="out-warn">${text}</span>`;
+                return '';
+            }).join('') || '<span class="out-warn">No text output.</span>';
 
-            // Read messages in the order WebR produces them.
-            // stdout/stderr/message arrive immediately; canvas images arrive when
-            // a page is finalised (new plot started or dev.off() called), so they
-            // appear inline between text messages in the correct sequence.
-            messageLoop: while (true) {
-                const msg = await webR.read();
+            // ── 2. Plot output ──────────────────────────────────────────
+            (result.images || []).forEach(bitmap => {
+                plotsEl.appendChild(bitmapToImg(bitmap));
+            });
 
-                switch (msg.type) {
-                    case 'stdout':
-                        appendSpan(outputEl, 'out-line', msg.data);
-                        break;
-                    case 'stderr':
-                        appendSpan(outputEl, 'out-err', msg.data);
-                        break;
-                    case 'message':
-                        appendSpan(outputEl, 'out-warn', msg.data);
-                        break;
-                    case 'canvas':
-                        if (msg.data.event === 'canvasImage') {
-                            outputEl.appendChild(bitmapToImg(msg.data.image));
-                        }
-                        break;
-                    case 'prompt':
-                        break messageLoop;
-                }
-            }
-
-            if (outputEl.children.length === 0) {
-                appendSpan(outputEl, 'out-warn', 'No output.');
-            }
+            await shelter.purge();
 
         } catch (err) {
-            outputEl.innerHTML = '';
-            appendSpan(outputEl, 'out-err', 'Error: ' + err.message);
-        } finally {
-            btn.disabled = false;
+            outputEl.innerHTML = `<span class="out-err">Error: ${escapeHtml(err.message)}</span>`;
         }
+    }
+
+    // Expose to global scope so non-module scripts can call it
+    window.ejecutar = ejecutar;
+
+    document.getElementById('btn').addEventListener('click', () => {
+        const cmd2 = document.getElementById('input').value;
+        ejecutar(cmd2);
     });
 </script>
+
+<script>
+function getLines() {
+    const textarea = document.getElementById('input');
+    const contenido = textarea.value;
+    const lineas = contenido.split('\n');
+    lineas.forEach(linea => ejecutar(linea));
+}
+</script>
+
 </body>
 </html>
